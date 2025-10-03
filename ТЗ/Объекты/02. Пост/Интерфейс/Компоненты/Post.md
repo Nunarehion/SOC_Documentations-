@@ -61,99 +61,53 @@
 - Показывать короткие toasts при успешных/ошибочных операциях.
 - Кеширование медиа и публикаций для ускорения повторного открытия.
 
-## API‑запросы
+## API‑запросы (синхронизировано с серверным контрактом)
+
+Формат API: завершающий слеш, подресурсы во множественном числе, `snake_case` в ответах. Клиент может маппить в `camelCase` локально.
 
 1) Получить пост
-- GET /api/posts/{postId}
-- Query: ?fields=summary|full|comments
-- 200 OK data: { post: { id, author, content, media, counts, userState, createdAt } }
+- GET /api/posts/{id}/
+- 200 OK: { post: { id, author, content, media, created_at, counts, user_state } }
 
 2) Создать пост
-- POST /api/posts
-- Body:
-{
-  "text": "string",
-  "mediaIds": ["id", ...]
-}
-- 201 Created data: { post: { ... } }
+- POST /api/posts/
+- Body: { "content": "string", "media_ids": ["uuid", ...] }
+- 201 Created: { post: { ... } }
 
-3) Обновить пост (владелец)
-- PATCH /api/posts/{postId}
-- Body: { "text"?: "string", "mediaIds"?: ["id"] }
-- 200 OK data: { post: { ... } }
+3) Удалить пост (владелец)
+- DELETE /api/posts/{id}/
+- 204 No Content; ошибки: 403 (не владелец), 404
 
-4) Удалить пост (владелец)
-- DELETE /api/posts/{postId}
-- 200 OK data: { deleted: true, deletedAt: "ISO" }
-- 403 if not owner, 404 if not found
+4) Лайк / снять лайк
+- PUT /api/posts/{id}/likes/ — поставить лайк → 200 { liked: true, likes_count: number }
+- DELETE /api/posts/{id}/likes/ — снять лайк → 200 { liked: false, likes_count: number }
 
-5) Лайк / снять лайк
-- POST /api/posts/{postId}/likes
-- Body: { "action": "toggle" }  или use PUT/DELETE:
-  - PUT /api/posts/{postId}/likes  — поставить лайк
-  - DELETE /api/posts/{postId}/likes — убрать лайк
-- 200 OK data: { liked: true|false, likesCount: number }
+5) Репост / отмена репоста
+- PUT /api/posts/{id}/reposts/ (optional body { "comment"?: "string" }) → 200 { reposted: true, reposts_count: number }
+- DELETE /api/posts/{id}/reposts/ → 200 { reposted: false, reposts_count: number }
 
-6) Репост / отмена репоста
-- POST /api/posts/{postId}/reposts
-- Body: { "action":"toggle" } или
-  - PUT /api/posts/{postId}/reposts
-  - DELETE /api/posts/{postId}/reposts
-- 200 OK data: { reposted: true|false, repostsCount: number }
+6) Комментарии
+- GET /api/posts/{id}/comments/?limit=20&after={cursor} → 200 { comments:[...], next_cursor:"..." }
+- POST /api/posts/{id}/comments/ Body: { "text": "string", "reply_to_comment_id"?: "id" } → 201 { comment: { ... }, comments_count: number }
 
-7) Комментарии
-- GET /api/posts/{postId}/comments?limit=20&after={cursor}
-- 200 OK data: { comments:[...], nextCursor: "..." }
-- POST /api/posts/{postId}/comments
-- Body: { "text": "string", "replyToCommentId"?: "id" }
-- 201 Created data: { comment: { ... }, commentsCount: number }
+7) Жалоба (report)
+- POST /api/posts/{id}/reports/ Body: { reason, comment? } → 201 { report_id: "uuid", hidden_for_user: true } (409 если уже отправлена)
+- GET /api/posts/{id}/reports/me → 200 { reported: boolean, report?: { id, reason, status } }
+- DELETE /api/posts/{id}/reports/{report_id}/ → 204
 
-8) Жалоба (report)
-- POST /api/posts/{postId}/reports
-- Body:
-{
-  "reason": "spam|irrelevant|violence|other",
-  "comment"?: "string",
-  "sendToModeration"?: true
-}
-- 201 Created data: { reportId: "uuid", hiddenForUser: true }
-- 409 if already reported (idempotent handling)
+8) Локально скрыть пост
+- POST /api/posts/{id}/hide/ → 200 { hidden_for_user: true }
 
-9) Проверить жалобу пользователя
-- GET /api/posts/{postId}/reports/me
-- 200 OK data: { reported: boolean, report?: { id, reason, status } }
+9) Поделиться ссылкой
+- POST /api/posts/{id}/share/ Body: { type?: "permalink|short", expires_in?: number } → 200 { url, short_code?, expires_at? }
 
-10) Отозвать жалобу (если разрешено)
-- DELETE /api/posts/{postId}/reports/{reportId}
-- 200 OK
-
-11) Скрыть пост локально для пользователя (без жалобы)
-- POST /api/posts/{postId}/hide
-- Body: {}
-- 200 OK data: { hiddenForUser: true }
-
-12) Поделиться / генерация ссылки
-- POST /api/posts/{postId}/share
-- Body:
-{ "type"?: "permalink|short", "expiresIn"?: number }
-- 200 OK data: { url: "https://...", shortCode?: "...", expiresAt?: "ISO" }
-
-13) Получить метаданные медиа для поста
-- GET /api/media/{mediaId}
-- 200 OK data: { id, url, type, width, height, duration? }
-
-14) Список постов (ленивая загрузка / лента)
-- GET /api/posts?limit=20&after={cursor}&filter={user|following|tag}
-- 200 OK data: { posts:[...], nextCursor }
-
-15) Вебхуки / события (опционально)
-- POST /api/webhooks/events
-- Body: { event: "post_deleted|post_reported|post_shared", data: {...} } — для внешней интеграции/аналитики
+10) Лента / список постов
+- GET /api/posts/?limit=20&after={cursor}&filter={user|following|tag} → 200 { posts:[...], next_cursor }
 
 Рекомендации по поведению API
-- Все мутации должны возвращать актуальные счётчики (likesCount, commentsCount, repostsCount).
-- Идемпотентность: повторные POST на reports/likes должны корректно обрабатываться (409 или вернуть текущий статус).
+- Все мутации возвращают актуальные счётчики (likes_count, comments_count, reposts_count).
+- Идемпотентность: повторные PUT для лайка/репоста безопасны; повторные жалобы — 409 или вернуть текущий статус.
 - Авторизация: 401 если не авторизован; 403 при отсутствии прав.
 - Ошибки: структурировать { success:false, code: "string", message: "human" }.
 - Лимиты: rate-limit для жалоб и репостов, валидация размеров медиа.
-- Audit: логировать report.create, post.delete, post.share с userId, postId, ip, userAgent.
+- Audit: логировать report.create, post.delete, post.share с user_id, post_id, ip, user_agent.
