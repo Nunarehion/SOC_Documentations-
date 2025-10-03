@@ -1,4 +1,4 @@
-#ConfirmDialog — описание компонента
+# ConfirmDialog — описание компонента
 
 Переиспользуемый модальный диалог подтверждения для destructive/critical действий (удаление, сброс, выход и т.п.). Доступен для использования внутри PostActions, других компонентов и страниц.
 
@@ -63,9 +63,3 @@ Slots / Customization
   1. PostActions открывает ConfirmDialog с title="Удалить пост?" message="Это действие необратимо."
   2. На confirm: PostActions вызывает store.removePost (optimistic), вызывает API deletePost, показывает toast; при ошибке — restorePost и show error.
 - Сохранение черновика: использовать secondary action.
-
-
-Варианты расширения
-- Добавить prop timeoutConfirm — автоматическое подтверждение через X секунд с обратным отсчетом (редко используется).
-- Поддержать confirmInput (ввод строки для подтверждения) для критичных операций.
-- Локализация: все подписи через i18n-ключи.
